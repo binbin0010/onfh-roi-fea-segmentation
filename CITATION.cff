@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+title: "Segmentation-assisted ROI definition and finite element preprocessing workflow for osteonecrosis of the femoral head"
+version: 1.0.0
+license: MIT
+type: software
+message: "If you use this software, please cite the archived software DOI and associated manuscript."
+authors:
+  - family-names: Zheng
+    given-names: Shanbin
+  - family-names: Xia
+    given-names: Tianwei
+keywords:
+  - osteonecrosis of the femoral head
+  - CT segmentation
+  - finite element analysis
+  - ROI
+  - Mimics
+  - 3D Slicer

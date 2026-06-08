@@ -1,0 +1,24 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+Thumbs.db
+
+# Generated outputs
+outputs/
+*.stl
+*.mat
+*.mrml
+*.mcs
+*.inp
+*.cdb
+
+# Clinical data - do not commit
+*.dcm
+*.nii
+*.nii.gz
+DICOM/
+dicom/
+clinical_data/
+patient_data/

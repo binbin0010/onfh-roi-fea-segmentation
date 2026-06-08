@@ -1,0 +1,10 @@
+name: onfh-roi-fea-segmentation
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.10
+  - numpy
+  - scipy
+  - pip
+  - pip:
+      - totalsegmentator

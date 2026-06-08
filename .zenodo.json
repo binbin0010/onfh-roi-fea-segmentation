@@ -1,0 +1,27 @@
+{
+  "title": "Segmentation-assisted ROI definition and finite element preprocessing workflow for osteonecrosis of the femoral head",
+  "upload_type": "software",
+  "access_right": "open",
+  "license": "mit",
+  "version": "1.0.0",
+  "language": "eng",
+  "creators": [
+    {
+      "name": "Zheng, Shanbin",
+      "affiliation": "Affiliated Hospital of Nanjing University of Chinese Medicine"
+    },
+    {
+      "name": "Xia, Tianwei",
+      "affiliation": "Affiliated Hospital of Nanjing University of Chinese Medicine"
+    }
+  ],
+  "keywords": [
+    "osteonecrosis of the femoral head",
+    "CT segmentation",
+    "finite element analysis",
+    "ROI",
+    "Mimics",
+    "3D Slicer"
+  ],
+  "related_identifiers": []
+}
