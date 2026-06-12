@@ -18,11 +18,13 @@ No patient identifiers are required. Set PATIENT_NAME to an anonymized study ID.
 
 import inspect
 import os
+import shutil
+import tempfile
 import sys
 
 import numpy as np
 import slicer
-import vtk  # noqa: F401  # imported for Slicer extension compatibility
+import vtk
 
 
 # =========================
@@ -33,6 +35,12 @@ PATIENT_NAME = "example_case"
 SIDE = "right"  # "left" or "right"
 OUTPUT_DIR = os.path.abspath("outputs/slicer")
 EXPORT_STL = True
+
+# TotalSegmentator settings. In TotalSegmentator 2.x, fast mode is controlled
+# by quality/--fast, not by a task named "total_fast".
+TS_QUALITY = "fast"  # "normal", "fast", or "faster"
+TS_CPU = True
+FEMUR_LABELS = ["femur_left", "femur_right"]
 
 
 # =========================
@@ -63,15 +71,28 @@ def check_hu_offset(vol):
     thresholding. For most Slicer DICOM imports, the offset is 0.
     """
     arr = slicer.util.arrayFromVolume(vol)
-    p99 = float(np.percentile(arr, 99))
     p01 = float(np.percentile(arr, 1))
-    print(f"  [HU check] voxel distribution: p01={p01:.1f}, p99={p99:.1f}")
+    p50 = float(np.percentile(arr, 50))
+    p99 = float(np.percentile(arr, 99))
+    print(f"  [HU check] voxel distribution: p01={p01:.1f}, p50={p50:.1f}, p99={p99:.1f}")
 
-    # A distribution roughly in [0, 2500] is often Mimics-style GV.
-    if p01 > -200 and p99 < 1500:
+    # A distribution roughly in [0, 2500+] is often Mimics-style GV.
+    # Values with air/fill near -1000 are generally already real HU.
+    if p01 > -200 and p99 > 1000:
         print("  [HU check] GV-like values detected; applying -1024 offset.")
         return -1024
+    print("  [HU check] treating values as real HU; no offset applied.")
     return 0
+
+
+def validate_config():
+    """Validate user-facing configuration values."""
+    side = SIDE.lower().strip()
+    if side not in ("left", "right"):
+        raise ValueError("SIDE must be 'left' or 'right'.")
+    if TS_QUALITY not in ("normal", "fast", "faster"):
+        raise ValueError("TS_QUALITY must be 'normal', 'fast', or 'faster'.")
+    return side
 
 
 def get_totalseg_logic():
@@ -106,32 +127,154 @@ def call_totalseg_process(ts_logic, vol, out_seg):
     print(f"  [TotalSeg] process() parameters: {list(params.keys())}")
 
     kwargs = {}
+    positional_args = []
+    input_matched = False
     for in_key in ("inputVolume", "inputVolumeNode", "input_volume"):
         if in_key in params:
             kwargs[in_key] = vol
+            input_matched = True
             break
+    if not input_matched:
+        positional_args.append(vol)
 
+    output_matched = False
     for out_key in ("outputSegmentation", "outputSegmentationNode", "output_segmentation"):
         if out_key in params:
             kwargs[out_key] = out_seg
+            output_matched = True
             break
+    if not output_matched:
+        positional_args.append(out_seg)
 
-    if not kwargs:
-        ts_logic.process(vol, out_seg)
-        return
+    if "quality" in params:
+        kwargs["quality"] = TS_QUALITY
+    elif "fast" in params and TS_QUALITY in ("fast", "faster"):
+        kwargs["fast"] = True
+
+    if "cpu" in params:
+        kwargs["cpu"] = TS_CPU
 
     if "task" in params:
-        kwargs["task"] = "total_fast"
-    elif "fast" in params:
-        kwargs["fast"] = True
+        kwargs["task"] = "total"
 
     for subset_key in ("subset", "subsetOfTotalSegmentator", "labels"):
         if subset_key in params:
-            kwargs[subset_key] = ["femur_left", "femur_right"]
+            kwargs[subset_key] = list(FEMUR_LABELS)
             break
 
-    print(f"  [TotalSeg] call arguments: {list(kwargs.keys())}")
-    ts_logic.process(**kwargs)
+    if "interactive" in params:
+        kwargs["interactive"] = False
+
+    printable_kwargs = {
+        key: value
+        for key, value in kwargs.items()
+        if key
+        not in (
+            "inputVolume",
+            "inputVolumeNode",
+            "input_volume",
+            "outputSegmentation",
+            "outputSegmentationNode",
+            "output_segmentation",
+        )
+    }
+    print(f"  [TotalSeg] call arguments: positional={len(positional_args)}, kwargs={printable_kwargs}")
+    ts_logic.process(*positional_args, **kwargs)
+
+
+def normalize_segment_name(name):
+    """Normalize TotalSegmentator/Slicer display names for robust matching."""
+    return " ".join(str(name).lower().replace("_", " ").replace("-", " ").split())
+
+
+def find_femur_segment_id(segmentation, side):
+    """Find femur segment ID across raw labels and Slicer terminology names."""
+    candidates = [
+        f"femur_{side}",
+        f"{side}_femur",
+        f"{side} femur",
+        f"femur {side}",
+    ]
+
+    for name in candidates:
+        seg_id = segmentation.GetSegmentIdBySegmentName(name)
+        if seg_id:
+            return seg_id
+
+    normalized_candidates = {normalize_segment_name(name) for name in candidates}
+    for idx in range(segmentation.GetNumberOfSegments()):
+        seg_id = segmentation.GetNthSegmentID(idx)
+        segment_name = segmentation.GetSegment(seg_id).GetName()
+        if normalize_segment_name(segment_name) in normalized_candidates:
+            return seg_id
+
+    return None
+
+
+def superior_band_from_mask(mask_bool, vol, fraction=0.40):
+    """Return the superior femur band in physical RAS space."""
+    zs, ys, xs = np.where(mask_bool)
+    if len(zs) == 0:
+        raise RuntimeError("Full-femur mask is empty.")
+
+    ijk_to_ras = vtk.vtkMatrix4x4()
+    vol.GetIJKToRASMatrix(ijk_to_ras)
+    # arrayFromVolume indices are [k, j, i], corresponding to IJK [i, j, k].
+    superior_values = (
+        ijk_to_ras.GetElement(2, 0) * xs
+        + ijk_to_ras.GetElement(2, 1) * ys
+        + ijk_to_ras.GetElement(2, 2) * zs
+        + ijk_to_ras.GetElement(2, 3)
+    )
+    superior_min = float(superior_values.min())
+    superior_max = float(superior_values.max())
+    superior_cut = superior_max - (superior_max - superior_min) * fraction
+
+    band = np.zeros_like(mask_bool, dtype=bool)
+    keep = superior_values >= superior_cut
+    band[zs[keep], ys[keep], xs[keep]] = True
+    print(
+        "  [TotalSeg] femur superior range "
+        f"[{superior_min:.1f}, {superior_max:.1f}] mm; candidate >= {superior_cut:.1f}"
+    )
+    return band
+
+
+def choose_head_component(candidate_mask):
+    """Choose the connected component most consistent with the femoral head."""
+    from scipy.ndimage import label as cc_label
+
+    labels, n_components = cc_label(candidate_mask)
+    if n_components == 0:
+        return None, 0
+
+    best_score, best_id = -1.0, None
+    largest_volume, largest_id = 0, None
+    for cid in range(1, n_components + 1):
+        comp = labels == cid
+        volume = int(comp.sum())
+        if volume > largest_volume:
+            largest_volume, largest_id = volume, cid
+        if volume < 500:
+            continue
+
+        zs, ys, xs = np.where(comp)
+        bbox_volume = (
+            (zs.max() - zs.min() + 1)
+            * (ys.max() - ys.min() + 1)
+            * (xs.max() - xs.min() + 1)
+        )
+        compactness = volume / max(bbox_volume, 1)
+        score = volume * compactness
+        print(f"    candidate #{cid}: voxels={volume}, compactness={compactness:.3f}, score={score:.0f}")
+        if score > best_score:
+            best_score, best_id = score, cid
+
+    if best_id is None:
+        best_id = largest_id
+        print(f"  [TotalSeg] warning: no component >=500 voxels; using largest component #{best_id}")
+
+    return labels == best_id, best_id
 
 
 def femoral_head_from_totalsegmentator(vol, side="right"):
@@ -154,7 +297,7 @@ def femoral_head_from_totalsegmentator(vol, side="right"):
     call_totalseg_process(ts_logic, vol, out_seg)
 
     seg_name = f"femur_{side}"
-    seg_id = out_seg.GetSegmentation().GetSegmentIdBySegmentName(seg_name)
+    seg_id = find_femur_segment_id(out_seg.GetSegmentation(), side)
     if not seg_id:
         all_names = []
         for idx in range(out_seg.GetSegmentation().GetNumberOfSegments()):
@@ -169,51 +312,17 @@ def femoral_head_from_totalsegmentator(vol, side="right"):
         raise RuntimeError("TotalSegmentator output was empty. Check model loading and side.")
 
     from scipy.ndimage import binary_opening
-    from scipy.ndimage import label as cc_label
 
-    z_idx = np.where(full_femur.any(axis=(1, 2)))[0]
-    z_top, z_bot = z_idx.max(), z_idx.min()
-    z_span = z_top - z_bot
-    z_cut = z_top - int(z_span * 0.40)
-    print(f"  [TotalSeg] femur z-range [{z_bot}, {z_top}], head candidate z >= {z_cut}")
+    head_band = superior_band_from_mask(full_femur, vol, fraction=0.40)
+    opened_band = binary_opening(head_band, iterations=3)
+    head, best_id = choose_head_component(opened_band)
 
-    head_band = full_femur.copy()
-    head_band[:z_cut, :, :] = False
-    head_band = binary_opening(head_band, iterations=3)
-    labels, n_components = cc_label(head_band)
-
-    if n_components == 0:
+    if head is None or int(head.sum()) == 0:
         print("  [TotalSeg] warning: opening removed all candidates; falling back.")
-        head_band = full_femur.copy()
-        head_band[:z_cut, :, :] = False
-        labels, n_components = cc_label(head_band)
+        head, best_id = choose_head_component(head_band)
+        if head is None or int(head.sum()) == 0:
+            raise RuntimeError("Femoral head extraction failed after geometric separation.")
 
-    if n_components == 0:
-        raise RuntimeError("Femoral head extraction failed after geometric separation.")
-
-    best_score, best_id = -1.0, 1
-    for cid in range(1, n_components + 1):
-        comp = labels == cid
-        volume = int(comp.sum())
-        if volume < 500:
-            continue
-
-        zs, ys, xs = np.where(comp)
-        bbox_volume = (
-            (zs.max() - zs.min() + 1)
-            * (ys.max() - ys.min() + 1)
-            * (xs.max() - xs.min() + 1)
-        )
-        compactness = volume / max(bbox_volume, 1)
-        score = volume * compactness
-        print(
-            f"    candidate #{cid}: voxels={volume}, compactness={compactness:.3f}, "
-            f"score={score:.0f}"
-        )
-        if score > best_score:
-            best_score, best_id = score, cid
-
-    head = labels == best_id
     print(f"  [TotalSeg] selected component #{best_id}; femoral-head voxels = {int(head.sum())}")
 
     slicer.mrmlScene.RemoveNode(out_seg)
@@ -245,10 +354,36 @@ def compute_volume_mm3(mask_bool, vol):
 
 def export_segment_stl(seg, seg_id, path):
     """Export a segment as an STL file."""
-    slicer.modules.segmentations.logic().ExportSegmentsClosedSurfaceRepresentation(seg, [seg_id])
-    name = seg.GetSegmentation().GetSegment(seg_id).GetName()
-    model_node = slicer.util.getNode(name)
-    slicer.util.saveNode(model_node, path)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    segment_ids = vtk.vtkStringArray()
+    segment_ids.InsertNextValue(seg_id)
+    logic = slicer.modules.segmentations.logic()
+    temp_dir = tempfile.mkdtemp(prefix="slicer_stl_export_", dir=os.path.dirname(path))
+
+    try:
+        ok = logic.ExportSegmentsClosedSurfaceRepresentationToFiles(
+            temp_dir, seg, segment_ids, "STL", False, 1.0, False
+        )
+    except Exception as exc:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise RuntimeError(f"Slicer STL export call failed: {exc}") from exc
+
+    exported_files = []
+    for root, _, files in os.walk(temp_dir):
+        for file_name in files:
+            if file_name.lower().endswith(".stl"):
+                exported_files.append(os.path.join(root, file_name))
+
+    if not exported_files:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise RuntimeError(f"STL export failed for {path}. API returned: {ok}")
+
+    exported_file = max(exported_files, key=os.path.getsize)
+    if os.path.exists(path):
+        os.remove(path)
+    os.replace(exported_file, path)
+    shutil.rmtree(temp_dir, ignore_errors=True)
+    print(f"      STL saved: {path}")
 
 
 def arco_stage(ratio, roi_volume_mm3):
@@ -265,8 +400,9 @@ def arco_stage(ratio, roi_volume_mm3):
 
 
 def main():
+    side = validate_config()
     os.makedirs(OUTPUT_DIR, exist_ok=True)
-    print(f">>> Start processing: {PATIENT_NAME} (side: {SIDE})")
+    print(f">>> Start processing: {PATIENT_NAME} (side: {side})")
 
     vol = get_volume_node()
     vol_arr = slicer.util.arrayFromVolume(vol)
@@ -277,7 +413,7 @@ def main():
     seg.SetReferenceImageGeometryParameterFromVolumeNode(vol)
 
     print("[1/7] Extract femoral head (TotalSegmentator + geometry)")
-    femoral_head_mask, _full_femur = femoral_head_from_totalsegmentator(vol, side=SIDE)
+    femoral_head_mask, _full_femur = femoral_head_from_totalsegmentator(vol, side=side)
     femoral_head_id = write_mask_to_segment(
         seg, "FEMORAL_HEAD", femoral_head_mask, (0.12, 0.47, 0.86), vol
     )
@@ -306,7 +442,7 @@ def main():
     scl_dilated = binary_dilation(scl_mask, iterations=3) & femoral_head_mask
     roi = necro_mask | scl_dilated
     roi = binary_closing(roi, iterations=4) & femoral_head_mask
-    roi = np.stack([binary_fill_holes(slice_mask) for slice_mask in roi])
+    roi = np.stack([binary_fill_holes(slice_mask) for slice_mask in roi]) & femoral_head_mask
     print(f"      final ROI voxels = {int(roi.sum())}")
     roi_id = write_mask_to_segment(seg, "NECROSIS_ROI_FINAL", roi, (1.00, 0.43, 0.00), vol)
 
@@ -324,7 +460,7 @@ def main():
     )
 
     print("=" * 56)
-    print(f"        Volume report - {PATIENT_NAME} (side: {SIDE})")
+    print(f"        Volume report - {PATIENT_NAME} (side: {side})")
     print("=" * 56)
     for key, value in volumes.items():
         print(f"  {key:<22s} : {value:10.2f} mm^3")
