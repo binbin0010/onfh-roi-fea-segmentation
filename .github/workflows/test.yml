@@ -1,0 +1,32 @@
+name: Test research software
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install test dependencies
+        run: python -m pip install --upgrade pip numpy scipy
+
+      - name: Run synthetic unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Compile Python sources
+        run: |
+          python -m py_compile \
+            scripts/slicer/onfh_v3_core.py \
+            scripts/slicer/femoral_necrosis_pipeline_v2.py \
+            scripts/slicer/femoral_necrosis_pipeline_v3.py
+

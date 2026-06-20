@@ -1,108 +1,231 @@
-# ONFH ROI and FEA Preprocessing Workflow
+# ONFH Anatomy-Adaptive ROI and FEA Preprocessing
 
-Research code for segmentation-assisted region-of-interest (ROI) definition and
-finite element analysis (FEA) preprocessing in osteonecrosis of the femoral head
-(ONFH).
+Research software for expert-reviewed region-of-interest (ROI) initialization
+and finite element analysis (FEA) preprocessing in osteonecrosis of the femoral
+head (ONFH).
 
-The workflow was designed to support reproducible extraction of femoral-head
-masks, necrotic-core masks, sclerotic-rim masks, final lesion-related ROIs,
-volume measurements, STL export, and downstream Mimics/3-matic/ANSYS
-preprocessing.
+> **Research use only.** This repository does not provide autonomous diagnosis,
+> clinical staging, or treatment recommendations. Every generated mask requires
+> review by a qualified imaging or orthopaedic expert.
 
-## Repository Contents
+## Why This Repository Exists
+
+CT-based ONFH engineering studies depend on more than a threshold. The
+femoral-head boundary, lesion-related tissue, postoperative sclerosis, graft
+material, and downstream FEA partitions must remain anatomically consistent
+and traceable.
+
+This repository provides:
+
+- affected-side femur and femoral-head extraction;
+- explainable lesion-related candidate masks;
+- anatomy-constrained ROI refinement;
+- structured QC warnings;
+- named STL export for Mimics/3-matic/ANSYS;
+- JSON and CSV provenance reports;
+- a documented multi-expert validation protocol.
+
+## Workflow Versions
+
+| Workflow | Purpose | Intensity model | Status |
+|---|---|---|---|
+| `femoral_necrosis_pipeline_v2.py` | Fixed-threshold manuscript baseline | 10-300 HU core, 600-1800 HU rim | Associated with release `v1.0.0`; expert review required |
+| `femoral_necrosis_pipeline_v3.py` | Anatomy-adaptive research workflow | Patient-specific percentiles with absolute HU safety bounds | Development workflow; synthetic tests passed; clinical contour validation pending |
+| `femoral_necrosis_pipeline.m` | Mimics MATLAB Link fallback | Fixed Mimics gray-value thresholds | Expert review required |
+
+V2 is retained for traceability. V3 is not presented as a drop-in replacement
+for the manuscript-associated release until clinical validation is completed.
+
+## V3 Method
+
+V3 separates the Slicer-independent algorithm from the Slicer integration:
+
+```text
+CT DICOM
+  -> HU/GV integrity check
+  -> TotalSegmentator affected-side femur
+  -> physical-axis femoral-head extraction
+  -> patient-adaptive cancellous reference
+  -> low-density and sclerotic-rim features
+  -> subchondral and superior weight-bearing priors
+  -> explainable weighted fusion
+  -> spacing-aware morphology and component filtering
+  -> automatic QC
+  -> expert review
+  -> STL + JSON + CSV
+  -> Mimics/3-matic/ANSYS
+```
+
+The fusion score is:
+
+```text
+0.45 * low-density score
++ 0.20 * sclerotic-rim proximity
++ 0.20 * subchondral score
++ 0.15 * superior weight-bearing score
+```
+
+The weights are prespecified research parameters, not validated diagnostic
+coefficients. See [docs/algorithm_v3.md](docs/algorithm_v3.md) and
+[docs/parameter_table.md](docs/parameter_table.md).
+
+## Explainable Outputs
+
+The Slicer v3 workflow creates:
+
+- `FEMORAL_HEAD`
+- `LOW_DENSITY_CORE`
+- `SCLEROTIC_RIM`
+- `SUBCHONDRAL_BAND`
+- `WEIGHT_BEARING_ZONE`
+- `NECROSIS_ROI_FINAL`
+- `QC_WARNING_REGION`
+
+Per-case file outputs:
+
+```text
+<case>_femoral_head_v3.stl
+<case>_necrosis_ROI_v3.stl
+<case>_onfh_v3_report.json
+<case>_onfh_v3_summary.csv
+```
+
+The report records software version, configuration, adaptive thresholds,
+physical volumes, ROI ratio, component count, QC status, QC codes, and output
+filenames. V3 deliberately does not assign an ARCO stage.
+
+## Quick Start: 3D Slicer V3
+
+Requirements:
+
+- 3D Slicer 5.10 or compatible version;
+- SlicerTotalSegmentator extension;
+- TotalSegmentator model weights;
+- NumPy and SciPy available in Slicer Python;
+- CT imported as a scalar volume.
+
+Edit the configuration block in
+`scripts/slicer/femoral_necrosis_pipeline_v3.py`:
+
+```python
+PATIENT_NAME = "anonymized_case_id"
+SIDE = "right"
+OUTPUT_DIR = r"D:\approved_output_folder"
+```
+
+Run with `runpy` in the Slicer Python console:
+
+```python
+import runpy
+
+runpy.run_path(
+    r"path\to\scripts\slicer\femoral_necrosis_pipeline_v3.py",
+    run_name="__main__",
+)
+```
+
+Keep these files together in the same folder:
+
+```text
+femoral_necrosis_pipeline_v2.py
+femoral_necrosis_pipeline_v3.py
+onfh_v3_core.py
+```
+
+Plain `exec(open(...).read())` is not recommended for v3 because it does not
+reliably expose the companion-module path.
+
+## Mandatory Expert Review
+
+Review every mask before measurement or FEA. At minimum, confirm:
+
+- the correct side was selected;
+- the femoral-head mask does not include acetabulum or excessive neck;
+- the final ROI remains inside the head and outside the cortical shell;
+- the core and rim agree with CT morphology;
+- the ROI agrees with the documented graft or lesion location;
+- QC warnings have been resolved or documented;
+- surface repair and Boolean partitions are acceptable before meshing.
+
+`PASS` means that no programmed warning threshold was triggered. It does not
+mean that the segmentation is clinically correct.
+
+## Validation Status
+
+Automated synthetic tests currently verify:
+
+- adaptive threshold behavior;
+- mask containment;
+- superior lesion retention;
+- inferior low-density decoy rejection;
+- small-component removal;
+- QC warning generation;
+- JSON and CSV report stability.
+
+Clinical spatial accuracy has not yet been established. Before reporting v3 as
+an automatic segmentation method, complete the protocol in
+[docs/validation_protocol.md](docs/validation_protocol.md), including
+multi-expert consensus contours, Dice, Jaccard, HD95, average surface distance,
+volume error, correction time, external scanner testing, and FEA uncertainty
+propagation.
+
+## Run Automated Tests
+
+With a Python environment containing NumPy and SciPy:
+
+```bash
+python -m unittest discover -s tests -v
+python -m py_compile \
+  scripts/slicer/onfh_v3_core.py \
+  scripts/slicer/femoral_necrosis_pipeline_v2.py \
+  scripts/slicer/femoral_necrosis_pipeline_v3.py
+```
+
+The GitHub Actions workflow runs the same checks without executing Slicer-only
+APIs.
+
+## Repository Structure
 
 ```text
 scripts/
   slicer/
     femoral_necrosis_pipeline_v2.py
+    femoral_necrosis_pipeline_v3.py
+    onfh_v3_core.py
   mimics_matlab_link/
     femoral_necrosis_pipeline.m
+tests/
+  test_onfh_v3_core.py
 docs/
+  algorithm_v3.md
+  validation_protocol.md
   SOP.md
   parameter_table.md
   fea_preprocessing.md
   code_availability_statement.md
-  workflow_figure.png
-examples/
-  README.md
 ```
 
-## Workflows
+## FEA Boundary
 
-![ROI-to-FEA workflow](docs/workflow_figure.png)
+Segmentation masks define geometric partitions. Material stiffness remains
+assigned from CT HU values unless a different model is explicitly reported.
+STL generation does not validate surface repair, mesh convergence, contact
+assumptions, or loading conditions. See
+[docs/fea_preprocessing.md](docs/fea_preprocessing.md).
 
-### 1. 3D Slicer + TotalSegmentator route
+## Privacy
 
-Use `scripts/slicer/femoral_necrosis_pipeline_v2.py` when CT DICOM data can be
-loaded into 3D Slicer and the SlicerTotalSegmentator extension is available.
+Do not commit patient identifiers, raw DICOM, NIfTI volumes, MRML scenes,
+screenshots containing identifiers, STL models derived from patients, meshes,
+or institution-specific paths. Repository ignore rules cover common generated
+and clinical-data formats, but investigators remain responsible for privacy
+review.
 
-Main operations:
+## Citation and Release Boundary
 
-1. Load CT DICOM into 3D Slicer.
-2. Check whether voxel intensities are on the real HU scale or Mimics-style
-   gray-value scale.
-3. Use TotalSegmentator/nnU-Net to segment the affected-side femur.
-4. Extract the femoral head by adaptive head-neck separation.
-5. Generate candidate masks for necrotic core and sclerotic rim.
-6. Refine the final ROI by dilation, closing, and slice-wise hole filling.
-7. Export femoral-head and final-ROI STL files.
+Release `v1.0.0` is the manuscript-associated fixed-threshold workflow. The v3
+branch is a method-development update and should be cited with its eventual
+archived release or DOI after validation and versioning.
 
-### 2. Mimics 21 Research + MATLAB Link route
-
-Use `scripts/mimics_matlab_link/femoral_necrosis_pipeline.m` when the workflow is
-run inside Mimics 21 Research through `Run MATLAB Script`.
-
-Main operations:
-
-1. Activate an `ALL_BONE` mask in Mimics.
-2. Launch the MATLAB Link script.
-3. Enter a femoral-head seed point and affected side.
-4. Segment the seed-containing femoral-head component.
-5. Apply Mimics gray-value thresholds for necrotic core and sclerotic rim.
-6. Return `NewMask` to Mimics as the final ROI.
-7. Save masks and a volume report for downstream 3-matic/FEA use.
-
-## Key Parameters
-
-| Quantity | Real HU | Mimics GV |
-|---|---:|---:|
-| Bone threshold | 300-2000 | 1324-3024 |
-| Necrotic core | 10-300 | 1034-1324 |
-| Sclerotic rim | 600-1800 | 1624-2824 |
-| Sclerotic-rim dilation | 3 iterations | 3D spherical element |
-| ROI closing | 4 iterations | 3D spherical element |
-
-Mimics gray value (GV) is treated as `HU + 1024`.
-
-## Inputs and Outputs
-
-Inputs:
-
-- Hip CT DICOM volume or Mimics volume data.
-- Affected side (`left` or `right`).
-- Optional femoral-head seed point for the MATLAB route.
-
-Outputs:
-
-- `FEMORAL_HEAD`
-- `NECROTIC_CORE`
-- `SCLEROTIC_RIM`
-- `NECROSIS_ROI_FINAL`
-- ROI/femoral-head STL files
-- Volume report and necrosis ratio
-- Files suitable for Mimics/3-matic/ANSYS preprocessing
-
-## Privacy and Data
-
-This repository contains no patient-level DICOM data. Do not commit raw DICOM
-files, protected health information, screenshots containing patient identifiers,
-or institution-specific file paths.
-
-## Citation
-
-If you use this workflow, please cite the archived software DOI and the
-associated manuscript. See `CITATION.cff` for citation metadata.
-
-## Status
-
-Version `v1.0.0` is intended as the manuscript-associated release.
+See [CITATION.cff](CITATION.cff) and
+[docs/code_availability_statement.md](docs/code_availability_statement.md).
