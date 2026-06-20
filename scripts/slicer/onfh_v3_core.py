@@ -331,8 +331,7 @@ def segment_onfh_roi(
 
     low_density_core = analysis_mask & (hu <= low_threshold)
     sclerotic_rim = (
-        head
-        & finite
+        analysis_mask
         & (hu >= sclerotic_threshold)
         & (hu <= config.sclerotic_hu_ceiling)
     )

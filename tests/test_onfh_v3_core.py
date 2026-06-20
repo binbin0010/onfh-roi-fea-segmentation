@@ -2,6 +2,7 @@ import json
 import unittest
 
 import numpy as np
+from scipy.ndimage import distance_transform_edt
 
 from scripts.slicer.onfh_v3_core import (
     AdaptiveSegmentationConfig,
@@ -23,6 +24,8 @@ def make_synthetic_head(shape=(48, 48, 48)):
 
     hu = np.full(shape, -1000.0, dtype=float)
     hu[head] = 340.0
+    cortical_shell = head & (distance_transform_edt(head) <= 1.0)
+    hu[cortical_shell] = 1200.0
 
     lesion_center = np.array([34.0, 24.0, 24.0])
     lesion_distance = np.sqrt(
@@ -30,8 +33,13 @@ def make_synthetic_head(shape=(48, 48, 48)):
         + (yy - lesion_center[1]) ** 2
         + (xx - lesion_center[2]) ** 2
     )
-    lesion = (lesion_distance <= 4.2) & head
-    rim = (lesion_distance > 4.2) & (lesion_distance <= 6.2) & head
+    lesion = (lesion_distance <= 4.2) & head & ~cortical_shell
+    rim = (
+        (lesion_distance > 4.2)
+        & (lesion_distance <= 6.2)
+        & head
+        & ~cortical_shell
+    )
     hu[lesion] = 90.0
     hu[rim] = 850.0
 
@@ -61,6 +69,7 @@ def make_synthetic_head(shape=(48, 48, 48)):
         "rim": rim,
         "inferior_decoy": inferior_decoy,
         "tiny_decoy": tiny_decoy,
+        "cortical_shell": cortical_shell,
     }
 
 
@@ -93,6 +102,9 @@ class AnatomyAdaptiveSegmentationTests(unittest.TestCase):
         ).sum() / self.case["rim"].sum()
         self.assertGreater(low_overlap, 0.90)
         self.assertGreater(rim_overlap, 0.90)
+        self.assertFalse(
+            np.any(self.result.masks["SCLEROTIC_RIM"] & self.case["cortical_shell"])
+        )
 
     def test_all_anatomical_priors_and_final_roi_remain_inside_head(self):
         for name, mask in self.result.masks.items():
