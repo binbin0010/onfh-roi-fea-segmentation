@@ -1,12 +1,19 @@
 # Examples
 
-No patient-level DICOM files are included in this repository.
+No patient-level DICOM, NIfTI, MRML, STL, or identifiable screenshots are
+included.
 
-For public sharing, use one of the following:
+The automated tests create synthetic arrays in memory. Run:
 
-- synthetic CT-like volume data;
-- de-identified binary masks;
-- anonymized STL models without embedded identifiers;
-- screenshots with all patient metadata removed.
+```bash
+python -m unittest discover -s tests -v
+```
 
-Do not commit raw clinical DICOM files or identifiable screenshots.
+For public demonstrations, use:
+
+- synthetic CT-like volumes;
+- programmatically generated femoral-head phantoms;
+- de-identified masks approved for public release;
+- screenshots with all metadata removed.
+
+Do not treat a synthetic test as evidence of clinical segmentation accuracy.

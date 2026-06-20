@@ -303,10 +303,18 @@ def segment_onfh_roi(
         & (hu <= config.reference_max_hu)
     )
     reference_values = hu[reference_mask]
-    if reference_values.size < config.minimum_reference_voxels:
+    if reference_values.size == 0:
+        reference_mask = (
+            head
+            & finite
+            & (hu >= config.reference_min_hu)
+            & (hu <= config.reference_max_hu)
+        )
+        reference_values = hu[reference_mask]
+    if reference_values.size == 0:
         raise ValueError(
-            "Insufficient cancellous reference voxels for adaptive segmentation: "
-            f"{reference_values.size} < {config.minimum_reference_voxels}."
+            "No finite femoral-head voxels were available in the configured "
+            "reference HU interval."
         )
 
     reference_median = float(np.median(reference_values))

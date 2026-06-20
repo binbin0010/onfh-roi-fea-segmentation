@@ -13,6 +13,8 @@ outputs/
 *.mcs
 *.inp
 *.cdb
+*_onfh_v3_report.json
+*_onfh_v3_summary.csv
 
 # Clinical data - do not commit
 *.dcm

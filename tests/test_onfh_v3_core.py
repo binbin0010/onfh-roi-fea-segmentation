@@ -144,6 +144,30 @@ class AnatomyAdaptiveSegmentationTests(unittest.TestCase):
         self.assertEqual(oversized_qc["status"], "REVIEW")
         self.assertIn("ROI_RATIO_HIGH", oversized_codes)
 
+    def test_insufficient_reference_tissue_returns_auditable_fail_result(self):
+        small = make_synthetic_head(shape=(20, 20, 20))
+        small_config = AdaptiveSegmentationConfig(
+            minimum_reference_voxels=10000,
+            min_component_volume_mm3=5.0,
+        )
+        result = segment_onfh_roi(
+            hu_volume=small["hu"],
+            femoral_head_mask=small["head"],
+            spacing_zyx=(1.0, 1.0, 1.0),
+            superior_coordinates=small["superior"],
+            config=small_config,
+        )
+        codes = {item["code"] for item in result.qc["findings"]}
+        self.assertEqual(result.qc["status"], "FAIL")
+        self.assertIn("REFERENCE_INSUFFICIENT", codes)
+        report = make_json_safe_report(
+            result,
+            case_id="insufficient_reference",
+            side="right",
+            software_version="3.0.0",
+        )
+        json.dumps(report, allow_nan=False)
+
     def test_report_is_json_serializable_and_excludes_voxel_arrays(self):
         report = make_json_safe_report(
             self.result,
