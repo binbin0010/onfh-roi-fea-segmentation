@@ -45,13 +45,16 @@ CT DICOM
   -> HU/GV integrity check
   -> TotalSegmentator affected-side femur
   -> physical-axis femoral-head extraction
+  -> physical RAS sphere fitting and radial-depth maps
   -> patient-adaptive cancellous reference
   -> low-density and sclerotic-rim features
-  -> subchondral and superior weight-bearing priors
+  -> subchondral and anterosuperior weight-bearing priors
   -> explainable weighted fusion
+  -> gradient-aware seeded region growing
   -> spacing-aware morphology and component filtering
   -> automatic QC
   -> expert review
+  -> research angular and anatomical-involvement features
   -> STL + JSON + CSV
   -> Mimics/3-matic/ANSYS
 ```
@@ -62,12 +65,14 @@ The fusion score is:
 0.45 * low-density score
 + 0.20 * sclerotic-rim proximity
 + 0.20 * subchondral score
-+ 0.15 * superior weight-bearing score
++ 0.15 * anterosuperior weight-bearing score
 ```
 
 The weights are prespecified research parameters, not validated diagnostic
 coefficients. See [docs/algorithm_v3.md](docs/algorithm_v3.md) and
 [docs/parameter_table.md](docs/parameter_table.md).
+
+![ONFH V3.1 anatomy-adaptive workflow](docs/workflow_figure.png)
 
 ## Explainable Outputs
 
@@ -78,6 +83,10 @@ The Slicer v3 workflow creates:
 - `SCLEROTIC_RIM`
 - `SUBCHONDRAL_BAND`
 - `WEIGHT_BEARING_ZONE`
+- `ANTEROSUPERIOR_ZONE`
+- `FOREGROUND_SEED`
+- `BACKGROUND_SEED`
+- `REGION_GROWN_ROI`
 - `NECROSIS_ROI_FINAL`
 - `QC_WARNING_REGION`
 
@@ -91,8 +100,11 @@ Per-case file outputs:
 ```
 
 The report records software version, configuration, adaptive thresholds,
-physical volumes, ROI ratio, component count, QC status, QC codes, and output
-filenames. V3 deliberately does not assign an ARCO stage.
+sphere-fit geometry, physical volumes, component count, 3D Kerboul-like
+angular extent, subchondral- and weight-bearing-zone involvement, QC status,
+QC codes, and output filenames. V3 deliberately does not assign an ARCO stage.
+The experimental 0-100 collapse-feature score is an uncalibrated feature
+composite, not a collapse probability or treatment threshold.
 
 ## Quick Start: 3D Slicer V3
 
@@ -167,7 +179,9 @@ an automatic segmentation method, complete the protocol in
 [docs/validation_protocol.md](docs/validation_protocol.md), including
 multi-expert consensus contours, Dice, Jaccard, HD95, average surface distance,
 volume error, correction time, external scanner testing, and FEA uncertainty
-propagation.
+propagation. The angular, zone-involvement, and composite features additionally
+require outcome calibration and independent external validation before any
+prognostic interpretation.
 
 ## Run Automated Tests
 

@@ -6,8 +6,9 @@ V3 combines:
 2. physical-axis femoral-head extraction;
 3. patient-adaptive CT intensity features;
 4. subchondral and superior weight-bearing anatomical priors;
-5. explainable feature fusion and connected-component filtering;
-6. structured QC and reproducible STL/JSON/CSV export.
+5. sphere-derived anterosuperior geometry and seeded region growing;
+6. research angular and anatomical-involvement features;
+7. structured QC and reproducible STL/JSON/CSV export.
 
 This script initializes an expert-reviewable ROI. It is not an autonomous
 diagnostic system and does not replace MRI, radiologist review, or ARCO staging.
@@ -32,7 +33,7 @@ import slicer
 import vtk
 
 
-SOFTWARE_VERSION = "3.0.0-dev"
+SOFTWARE_VERSION = "3.1.0-dev"
 
 
 # =========================
@@ -73,14 +74,18 @@ from onfh_v3_core import (  # noqa: E402
 
 
 V3_CONFIG = AdaptiveSegmentationConfig(
-    low_percentile=30.0,
+    low_percentile=20.0,
     high_percentile=85.0,
     cortical_margin_mm=1.0,
     subchondral_depth_mm=8.0,
     superior_weight_bearing_fraction=0.45,
+    anterior_weight_bearing_fraction=0.60,
     rim_proximity_mm=6.0,
-    score_threshold=0.52,
     seed_score_threshold=0.58,
+    background_seed_score_threshold=0.20,
+    region_grow_minimum_score=0.40,
+    region_grow_maximum_gradient=0.85,
+    region_grow_connectivity=2,
     closing_radius_mm=2.0,
     min_component_volume_mm3=100.0,
 )
@@ -92,6 +97,10 @@ SEGMENT_COLORS = {
     "SCLEROTIC_RIM": (0.90, 0.69, 0.00),
     "SUBCHONDRAL_BAND": (0.15, 0.75, 0.65),
     "WEIGHT_BEARING_ZONE": (0.55, 0.30, 0.75),
+    "ANTEROSUPERIOR_ZONE": (0.35, 0.18, 0.70),
+    "FOREGROUND_SEED": (0.90, 0.10, 0.10),
+    "BACKGROUND_SEED": (0.45, 0.45, 0.45),
+    "REGION_GROWN_ROI": (0.95, 0.45, 0.10),
     "NECROSIS_ROI_FINAL": (1.00, 0.43, 0.00),
     "QC_WARNING_REGION": (1.00, 0.00, 1.00),
 }
@@ -109,19 +118,24 @@ def validate_config():
     return side
 
 
-def physical_superior_coordinates(vol, shape):
-    """Return an RAS-superior coordinate array matching NumPy [k, j, i]."""
+def physical_ras_coordinates(vol, shape):
+    """Return RAS coordinate arrays matching NumPy volume order [k, j, i]."""
     ijk_to_ras = vtk.vtkMatrix4x4()
     vol.GetIJKToRASMatrix(ijk_to_ras)
     k = np.arange(shape[0], dtype=np.float32)[:, None, None]
     j = np.arange(shape[1], dtype=np.float32)[None, :, None]
     i = np.arange(shape[2], dtype=np.float32)[None, None, :]
-    return (
-        ijk_to_ras.GetElement(2, 0) * i
-        + ijk_to_ras.GetElement(2, 1) * j
-        + ijk_to_ras.GetElement(2, 2) * k
-        + ijk_to_ras.GetElement(2, 3)
-    )
+    coordinates = []
+    for axis in range(3):
+        coordinates.append(
+            (
+                ijk_to_ras.GetElement(axis, 0) * i
+            + ijk_to_ras.GetElement(axis, 1) * j
+            + ijk_to_ras.GetElement(axis, 2) * k
+            + ijk_to_ras.GetElement(axis, 3)
+            ).astype(np.float32, copy=False)
+        )
+    return tuple(coordinates)
 
 
 def spacing_in_array_order(vol):
@@ -161,6 +175,25 @@ def print_report(result):
     print(f"  Sclerotic-rim volume           : {metrics['sclerotic_rim_mm3']:.2f} mm^3")
     print(f"  Final ROI volume               : {metrics['final_roi_mm3']:.2f} mm^3")
     print(f"  ROI/head ratio                 : {metrics['roi_to_head_percent']:.2f} %")
+    print(f"  Sphere radius                  : {metrics['sphere_radius_mm']:.2f} mm")
+    print(f"  Sphere-fit RMS                 : {metrics['sphere_fit_rms_mm']:.2f} mm")
+    print(
+        "  Kerboul-like combined angle    : "
+        f"{metrics['kerboul_like_combined_angle_deg']:.1f} deg"
+    )
+    print(
+        "  Subchondral-zone involvement   : "
+        f"{metrics['subchondral_involvement_percent']:.2f} %"
+    )
+    print(
+        "  Weight-bearing-zone involvement: "
+        f"{metrics['weight_bearing_involvement_percent']:.2f} %"
+    )
+    print(
+        "  Experimental feature score     : "
+        f"{metrics['experimental_collapse_feature_score']:.2f} / 100"
+    )
+    print("    Research feature only; not a validated collapse probability.")
     print(f"  QC status                      : {result.qc['status']}")
     for finding in result.qc["findings"]:
         print(
@@ -189,7 +222,7 @@ def main():
     femoral_head_mask, _ = v2.femoral_head_from_totalsegmentator(vol, side=side)
 
     print("[2/7] Build physical anatomical priors")
-    superior = physical_superior_coordinates(vol, hu_array.shape)
+    right, anterior, superior = physical_ras_coordinates(vol, hu_array.shape)
     spacing_zyx = spacing_in_array_order(vol)
 
     print("[3/7] Estimate adaptive CT features and fuse candidate ROI")
@@ -198,6 +231,8 @@ def main():
         femoral_head_mask=femoral_head_mask,
         spacing_zyx=spacing_zyx,
         superior_coordinates=superior,
+        anterior_coordinates=anterior,
+        right_coordinates=right,
         config=V3_CONFIG,
     )
 
@@ -242,6 +277,10 @@ def main():
                 "SCLEROTIC_RIM",
                 "SUBCHONDRAL_BAND",
                 "WEIGHT_BEARING_ZONE",
+                "ANTEROSUPERIOR_ZONE",
+                "FOREGROUND_SEED",
+                "BACKGROUND_SEED",
+                "REGION_GROWN_ROI",
                 "QC_WARNING_REGION",
             ):
                 if not result.masks[name].any():

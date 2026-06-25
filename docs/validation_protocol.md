@@ -50,6 +50,33 @@ All methods must use matched cases and evaluation masks.
 
 Report confidence intervals and per-case distributions, not only mean values.
 
+## Geometry and Research-Feature Validation
+
+Evaluate the new measurements against expert or independently derived
+references:
+
+- sphere center and radius repeatability;
+- sphere-fit residual stratified by collapse and deformity;
+- coronal, sagittal, and combined Kerboul-like angular agreement;
+- subchondral-zone involvement agreement;
+- anterosuperior weight-bearing-zone involvement agreement.
+
+Use ICC and Bland-Altman analysis for continuous measurements. Report failures
+where sphere fitting or physical-axis recovery is unreliable.
+
+The experimental collapse-feature score requires a separate prognosis study:
+
+1. prespecify the clinical endpoint and follow-up horizon;
+2. separate development, calibration, and external test cohorts;
+3. fit or recalibrate weights using only the development cohort;
+4. report discrimination, calibration, confidence intervals, and decision
+   analysis where appropriate;
+5. compare against established clinical and imaging predictors;
+6. do not select thresholds on the external test cohort.
+
+Until that study is completed, report the score only as an exploratory imaging
+feature, not as a predicted risk.
+
 ## Workflow Metrics
 
 - initialization runtime;
@@ -70,7 +97,9 @@ Evaluate:
 4. adaptive features plus subchondral prior;
 5. adaptive features plus weight-bearing prior;
 6. full model with rim proximity;
-7. full model without component filtering.
+7. full model without seeded region growing;
+8. full model without the anterior component of the location prior;
+9. full model without component filtering.
 
 This identifies which components contribute to performance.
 
@@ -115,4 +144,3 @@ Follow relevant medical-imaging AI and software reporting guidance. Report
 software version, exact parameters, excluded cases, failures, QC warnings,
 manual corrections, and external-validation results. Synthetic unit tests must
 be reported separately from clinical accuracy.
-

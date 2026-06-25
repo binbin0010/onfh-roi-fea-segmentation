@@ -28,6 +28,7 @@ Keep these files together:
 femoral_necrosis_pipeline_v2.py
 femoral_necrosis_pipeline_v3.py
 onfh_v3_core.py
+onfh_v3_features.py
 ```
 
 ### 2. Load and verify CT
@@ -70,10 +71,13 @@ The workflow:
 2. segments bilateral femora with TotalSegmentator;
 3. selects the affected femur;
 4. extracts the head using physical superior geometry;
-5. estimates adaptive intensity thresholds;
-6. creates anatomical priors and candidate masks;
-7. generates the final ROI and QC warning region;
-8. exports STL, JSON, and CSV.
+5. fits a femoral-head sphere in physical RAS coordinates;
+6. estimates adaptive intensity thresholds;
+7. creates subchondral and anterosuperior anatomical priors;
+8. performs gradient-aware seeded region growing;
+9. applies morphology, component filtering, and automatic QC;
+10. calculates research angular and zone-involvement features;
+11. exports STL, JSON, and CSV.
 
 ### 5. Review every output
 
@@ -84,6 +88,10 @@ Inspect:
 - `SCLEROTIC_RIM`
 - `SUBCHONDRAL_BAND`
 - `WEIGHT_BEARING_ZONE`
+- `ANTEROSUPERIOR_ZONE`
+- `FOREGROUND_SEED`
+- `BACKGROUND_SEED`
+- `REGION_GROWN_ROI`
 - `NECROSIS_ROI_FINAL`
 - `QC_WARNING_REGION`
 
@@ -97,10 +105,15 @@ Mandatory acceptance checks:
 - core and rim compatible with CT morphology;
 - ROI compatible with surgical graft location when postoperative;
 - all QC codes reviewed and documented;
+- sphere-fit residual and physical-coordinate mode reviewed;
 - manual corrections saved outside the public repository.
 
 `PASS` means only that programmed QC thresholds were not triggered. It does not
 establish clinical correctness.
+
+The 3D Kerboul-like angle, zone-involvement percentages, and experimental
+collapse-feature score are research outputs. The score is not a probability
+and must not be used to stage disease or recommend surgery.
 
 ### 6. Record corrections
 

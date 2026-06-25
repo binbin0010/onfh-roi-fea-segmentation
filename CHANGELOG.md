@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Added physical-RAS femoral-head sphere fitting, radial-depth maps, and
+  anterosuperior weight-bearing priors.
+- Added deterministic gradient-aware seeded region growing with explicit
+  foreground and background masks.
+- Added 3D Kerboul-like coronal/sagittal angular extent, subchondral-zone
+  involvement, weight-bearing-zone involvement, and an explicitly uncalibrated
+  experimental collapse-feature score.
+- Added sphere-fit and physical-coordinate QC metadata to JSON and CSV reports.
+- Updated the adaptive cancellous reference to the 20th/85th percentiles within
+  the -100 to 600 HU interval.
 - Added an anatomy-adaptive v3 ROI initialization workflow with patient-specific
   intensity percentiles, subchondral and superior weight-bearing priors,
   sclerotic-rim proximity, and explainable feature fusion.

@@ -65,6 +65,8 @@ def make_synthetic_head(shape=(48, 48, 48)):
         "hu": hu,
         "head": head,
         "superior": zz,
+        "anterior": yy,
+        "right": xx,
         "lesion": lesion,
         "rim": rim,
         "inferior_decoy": inferior_decoy,
@@ -85,8 +87,17 @@ class AnatomyAdaptiveSegmentationTests(unittest.TestCase):
             femoral_head_mask=self.case["head"],
             spacing_zyx=(1.0, 1.0, 1.0),
             superior_coordinates=self.case["superior"],
+            anterior_coordinates=self.case["anterior"],
+            right_coordinates=self.case["right"],
             config=self.config,
         )
+
+    def test_default_adaptive_reference_matches_v3_specification(self):
+        defaults = AdaptiveSegmentationConfig()
+        self.assertEqual(defaults.low_percentile, 20.0)
+        self.assertEqual(defaults.high_percentile, 85.0)
+        self.assertEqual(defaults.reference_min_hu, -100.0)
+        self.assertEqual(defaults.reference_max_hu, 600.0)
 
     def test_adaptive_thresholds_and_features_identify_expected_tissue(self):
         self.assertGreater(self.result.thresholds["low_hu"], 50.0)
@@ -110,6 +121,59 @@ class AnatomyAdaptiveSegmentationTests(unittest.TestCase):
         for name, mask in self.result.masks.items():
             self.assertEqual(mask.shape, self.case["head"].shape, name)
             self.assertFalse(np.any(mask & ~self.case["head"]), name)
+
+    def test_geometry_region_growing_and_research_features_are_reported(self):
+        expected_masks = {
+            "ANTEROSUPERIOR_ZONE",
+            "FOREGROUND_SEED",
+            "BACKGROUND_SEED",
+            "REGION_GROWN_ROI",
+        }
+        self.assertTrue(expected_masks.issubset(self.result.masks))
+        self.assertGreater(self.result.metrics["sphere_radius_mm"], 10.0)
+        self.assertLess(self.result.metrics["sphere_fit_rms_mm"], 2.0)
+        self.assertEqual(
+            self.result.metrics["physical_coordinate_mode"], "physical_ras"
+        )
+        for key in (
+            "kerboul_like_coronal_angle_deg",
+            "kerboul_like_sagittal_angle_deg",
+            "kerboul_like_combined_angle_deg",
+            "subchondral_involvement_percent",
+            "weight_bearing_involvement_percent",
+            "experimental_collapse_feature_score",
+        ):
+            self.assertIn(key, self.result.metrics)
+            self.assertTrue(np.isfinite(self.result.metrics[key]))
+        self.assertGreater(
+            (
+                self.result.masks["REGION_GROWN_ROI"] & self.case["lesion"]
+            ).sum(),
+            0,
+        )
+        self.assertGreater(
+            self.result.metrics["region_grown_voxel_count"],
+            self.result.metrics["seed_voxel_count"],
+        )
+        self.assertEqual(
+            self.result.metrics["candidate_voxel_count"],
+            self.result.metrics["region_grown_voxel_count"],
+        )
+
+    def test_missing_full_ras_coordinates_is_exposed_as_qc_warning(self):
+        fallback_result = segment_onfh_roi(
+            hu_volume=self.case["hu"],
+            femoral_head_mask=self.case["head"],
+            spacing_zyx=(1.0, 1.0, 1.0),
+            superior_coordinates=self.case["superior"],
+            config=self.config,
+        )
+        codes = {item["code"] for item in fallback_result.qc["findings"]}
+        self.assertIn("PHYSICAL_RAS_FALLBACK", codes)
+        self.assertEqual(
+            fallback_result.metrics["physical_coordinate_mode"],
+            "voxel_physical_fallback",
+        )
 
     def test_feature_fusion_retains_superior_lesion_and_rejects_inferior_decoy(self):
         final_roi = self.result.masks["NECROSIS_ROI_FINAL"]
@@ -191,6 +255,8 @@ class AnatomyAdaptiveSegmentationTests(unittest.TestCase):
         self.assertIn("synthetic_case", encoded)
         self.assertIn("adaptive_thresholds_hu", report)
         self.assertIn("quality_control", report)
+        self.assertIn("research_feature_status", report["method"])
+        self.assertFalse(report["method"]["research_feature_status"]["validated_predictor"])
         self.assertNotIn("masks", report)
 
     def test_csv_summary_has_stable_scalar_fields(self):
@@ -205,6 +271,10 @@ class AnatomyAdaptiveSegmentationTests(unittest.TestCase):
         self.assertEqual(row["software_version"], "3.0.0")
         self.assertIn("low_hu", row)
         self.assertIn("final_roi_mm3", row)
+        self.assertIn("kerboul_like_combined_angle_deg", row)
+        self.assertIn("subchondral_involvement_percent", row)
+        self.assertIn("weight_bearing_involvement_percent", row)
+        self.assertIn("experimental_collapse_feature_score", row)
         self.assertIn("qc_status", row)
         self.assertIsInstance(row["qc_codes"], str)
         self.assertFalse(any(isinstance(value, (dict, list, np.ndarray)) for value in row.values()))

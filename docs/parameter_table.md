@@ -4,9 +4,9 @@
 
 | Parameter | Default | Purpose |
 |---|---:|---|
-| Lower reference percentile | 30% | Patient-specific low-density threshold candidate |
+| Lower reference percentile | 20% | Patient-specific low-density threshold candidate |
 | Upper reference percentile | 85% | Patient-specific high-density threshold candidate |
-| Reference HU interval | -100 to 1000 HU | Cancellous-appearing reference population |
+| Reference HU interval | -100 to 600 HU | Cancellous-appearing reference population |
 | Low-density HU ceiling | 400 HU | Absolute safety bound |
 | Minimum contrast below reference median | 40 HU | Prevents the normal median from becoming the low threshold |
 | Sclerotic HU floor | 500 HU | Conservative lower safety bound |
@@ -23,7 +23,9 @@ and converts `GV` to `HU` with `HU = GV - 1024` when indicated.
 | Cortical margin | 1.0 mm | Prevents the final ROI from occupying the outer cortical shell |
 | Subchondral depth | 8.0 mm | Soft prior for the subchondral region |
 | Superior weight-bearing fraction | 45% | Soft prior for the superior head |
+| Anterior weight-bearing fraction | 60% | Soft prior favoring the anterior-superior head |
 | Sclerotic-rim proximity | 6.0 mm | Distance over which rim evidence contributes |
+| Sphere-fit warning threshold | RMS/radius >0.12 | Flags a poor spherical approximation |
 
 These priors are continuous scores. They do not define a lesion independently.
 
@@ -38,14 +40,44 @@ These priors are continuous scores. They do not define a lesion independently.
 
 | Parameter | Default |
 |---|---:|
-| Final score threshold | 0.52 |
 | High-confidence seed threshold | 0.58 |
 | Rim-envelope threshold | 0.25 |
+| Background-seed score threshold | 0.20 |
+| Region-growing minimum score | 0.40 |
+| Region-growing maximum normalized gradient | 0.85 |
+| Region-growing connectivity | 2 (18-neighbour) |
 | Spacing-aware closing radius | 2.0 mm |
 | Minimum component volume | 100 mm3 |
 
 The weights and thresholds are prespecified development parameters. They must
 be evaluated by ablation and external validation before clinical deployment.
+
+## V3 Research Feature Definitions
+
+```text
+subchondral involvement (%) =
+  final ROI voxels within the subchondral band
+  / all subchondral-band voxels * 100
+
+weight-bearing involvement (%) =
+  final ROI voxels within the anterosuperior weight-bearing zone
+  / all weight-bearing-zone voxels * 100
+
+3D Kerboul-like combined angle =
+  coronal angular span of the 3D ROI
+  + sagittal angular span of the 3D ROI
+
+experimental collapse-feature score =
+  100 * (
+    0.40 * normalized subchondral involvement
+    + 0.40 * normalized weight-bearing involvement
+    + 0.20 * normalized combined angle
+  )
+```
+
+The combined angle is derived from the 3D ROI but preserves the familiar
+coronal-plus-sagittal Kerboul structure. The composite score is uncalibrated,
+is not a probability, and must not be used for clinical decisions.
 
 ## V3 QC Parameters
 

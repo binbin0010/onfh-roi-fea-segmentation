@@ -6,7 +6,7 @@ does not provide autonomous diagnosis or clinical staging.
 """
 
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, Mapping, Tuple
+from typing import Any, Dict, Mapping, Optional, Tuple
 
 import numpy as np
 from scipy.ndimage import (
@@ -16,15 +16,34 @@ from scipy.ndimage import (
     label,
 )
 
+try:
+    from .onfh_v3_features import (
+        build_anterosuperior_prior,
+        build_spherical_geometry,
+        compute_experimental_collapse_feature_score,
+        compute_kerboul_like_3d_angles,
+        compute_zone_involvement,
+        seeded_region_grow,
+    )
+except ImportError:
+    from onfh_v3_features import (
+        build_anterosuperior_prior,
+        build_spherical_geometry,
+        compute_experimental_collapse_feature_score,
+        compute_kerboul_like_3d_angles,
+        compute_zone_involvement,
+        seeded_region_grow,
+    )
+
 
 @dataclass(frozen=True)
 class AdaptiveSegmentationConfig:
     """Configuration for anatomy-adaptive feature extraction and fusion."""
 
-    low_percentile: float = 30.0
+    low_percentile: float = 20.0
     high_percentile: float = 85.0
     reference_min_hu: float = -100.0
-    reference_max_hu: float = 1000.0
+    reference_max_hu: float = 600.0
     low_hu_ceiling: float = 400.0
     minimum_low_contrast_hu: float = 40.0
     sclerotic_hu_floor: float = 500.0
@@ -33,14 +52,18 @@ class AdaptiveSegmentationConfig:
     cortical_margin_mm: float = 1.0
     subchondral_depth_mm: float = 8.0
     superior_weight_bearing_fraction: float = 0.45
+    anterior_weight_bearing_fraction: float = 0.60
     rim_proximity_mm: float = 6.0
     low_density_weight: float = 0.45
     rim_proximity_weight: float = 0.20
     subchondral_weight: float = 0.20
     weight_bearing_weight: float = 0.15
-    score_threshold: float = 0.52
     seed_score_threshold: float = 0.58
     rim_envelope_threshold: float = 0.25
+    background_seed_score_threshold: float = 0.20
+    region_grow_minimum_score: float = 0.40
+    region_grow_maximum_gradient: float = 0.85
+    region_grow_connectivity: int = 2
     closing_radius_mm: float = 2.0
     min_component_volume_mm3: float = 100.0
     minimum_reference_voxels: int = 500
@@ -50,6 +73,7 @@ class AdaptiveSegmentationConfig:
     inferior_zone_fraction: float = 0.25
     inferior_roi_warning_fraction: float = 0.10
     fragmented_component_warning_count: int = 3
+    sphere_fit_warning_rms_fraction: float = 0.12
 
     def validate(self) -> None:
         percentile_values = (self.low_percentile, self.high_percentile)
@@ -63,6 +87,18 @@ class AdaptiveSegmentationConfig:
             raise ValueError("subchondral_depth_mm must exceed cortical_margin_mm.")
         if not 0.0 < self.superior_weight_bearing_fraction <= 1.0:
             raise ValueError("superior_weight_bearing_fraction must be in (0, 1].")
+        if not 0.0 < self.anterior_weight_bearing_fraction <= 1.0:
+            raise ValueError("anterior_weight_bearing_fraction must be in (0, 1].")
+        if not 0.0 <= self.background_seed_score_threshold < 1.0:
+            raise ValueError("background_seed_score_threshold must be in [0, 1).")
+        if not 0.0 <= self.region_grow_minimum_score <= 1.0:
+            raise ValueError("region_grow_minimum_score must be in [0, 1].")
+        if not 0.0 <= self.region_grow_maximum_gradient <= 1.0:
+            raise ValueError("region_grow_maximum_gradient must be in [0, 1].")
+        if self.region_grow_connectivity not in (1, 2, 3):
+            raise ValueError("region_grow_connectivity must be 1, 2, or 3.")
+        if self.sphere_fit_warning_rms_fraction <= 0:
+            raise ValueError("sphere_fit_warning_rms_fraction must be positive.")
         weights = (
             self.low_density_weight,
             self.rim_proximity_weight,
@@ -90,9 +126,9 @@ def _validate_inputs(
     spacing_zyx: Tuple[float, float, float],
     superior_coordinates: np.ndarray,
 ) -> Tuple[np.ndarray, np.ndarray, Tuple[float, float, float], np.ndarray]:
-    hu = np.asarray(hu_volume, dtype=float)
+    hu = np.asarray(hu_volume, dtype=np.float32)
     head = np.asarray(femoral_head_mask, dtype=bool)
-    superior = np.asarray(superior_coordinates, dtype=float)
+    superior = np.asarray(superior_coordinates, dtype=np.float32)
     spacing = tuple(float(value) for value in spacing_zyx)
 
     if hu.ndim != 3:
@@ -184,6 +220,8 @@ def evaluate_qc(
     spacing_zyx: Tuple[float, float, float],
     reference_voxel_count: int,
     config: AdaptiveSegmentationConfig,
+    physical_coordinate_mode: str = "physical_ras",
+    sphere_fit_rms_fraction: float = 0.0,
 ) -> Dict[str, Any]:
     """Evaluate explainable software QC without making a diagnosis."""
     head = np.asarray(femoral_head_mask, dtype=bool)
@@ -216,6 +254,19 @@ def evaluate_qc(
 
     if np.any(roi & ~head):
         add("ERROR", "ROI_OUTSIDE_HEAD", "Final ROI extends outside the femoral-head mask.")
+    if physical_coordinate_mode != "physical_ras":
+        add(
+            "WARNING",
+            "PHYSICAL_RAS_FALLBACK",
+            "Full physical RAS coordinates were unavailable; directional and angular "
+            "features used voxel-aligned physical coordinates.",
+        )
+    if sphere_fit_rms_fraction > config.sphere_fit_warning_rms_fraction:
+        add(
+            "WARNING",
+            "SPHERE_FIT_RESIDUAL_HIGH",
+            "Femoral-head sphere-fit residual is high relative to the fitted radius.",
+        )
     if reference_voxel_count < config.minimum_reference_voxels:
         add(
             "ERROR",
@@ -279,6 +330,8 @@ def segment_onfh_roi(
     spacing_zyx: Tuple[float, float, float],
     superior_coordinates: np.ndarray,
     config: AdaptiveSegmentationConfig = AdaptiveSegmentationConfig(),
+    anterior_coordinates: Optional[np.ndarray] = None,
+    right_coordinates: Optional[np.ndarray] = None,
 ) -> SegmentationResult:
     """Initialize an explainable ONFH lesion-related ROI."""
     config.validate()
@@ -287,7 +340,25 @@ def segment_onfh_roi(
     )
     finite = np.isfinite(hu)
     voxel_volume = float(np.prod(spacing))
-    distance_inside = distance_transform_edt(head, sampling=spacing)
+    if (anterior_coordinates is None) != (right_coordinates is None):
+        raise ValueError(
+            "anterior_coordinates and right_coordinates must be provided together."
+        )
+    has_full_ras = anterior_coordinates is not None and right_coordinates is not None
+    if has_full_ras:
+        geometry = build_spherical_geometry(
+            head,
+            spacing,
+            right_coordinates=right_coordinates,
+            anterior_coordinates=anterior_coordinates,
+            superior_coordinates=superior,
+        )
+        physical_coordinate_mode = "physical_ras"
+    else:
+        geometry = build_spherical_geometry(head, spacing)
+        physical_coordinate_mode = "voxel_physical_fallback"
+    sphere_fit = geometry["fit"]
+    distance_inside = geometry["distance_to_mask_surface_mm"]
 
     cortical_margin = head & (distance_inside <= config.cortical_margin_mm)
     analysis_mask = (
@@ -360,9 +431,19 @@ def segment_onfh_roi(
         distance_inside <= config.subchondral_depth_mm
     )
 
-    weight_bearing_score, weight_bearing_zone = _normalized_superior_score(
-        superior, head, config.superior_weight_bearing_fraction
-    )
+    if has_full_ras:
+        weight_bearing_score, weight_bearing_zone = build_anterosuperior_prior(
+            head,
+            geometry,
+            anterior_fraction=config.anterior_weight_bearing_fraction,
+            superior_fraction=config.superior_weight_bearing_fraction,
+        )
+        anterosuperior_zone = weight_bearing_zone.copy()
+    else:
+        weight_bearing_score, weight_bearing_zone = _normalized_superior_score(
+            superior, head, config.superior_weight_bearing_fraction
+        )
+        anterosuperior_zone = weight_bearing_zone.copy()
     weight_bearing_score *= analysis_mask
 
     combined_score = (
@@ -375,8 +456,37 @@ def segment_onfh_roi(
         low_density_core
         | (rim_proximity_score >= config.rim_envelope_threshold)
     )
-    candidate = candidate_envelope & (combined_score >= config.score_threshold)
     seed = low_density_core & (combined_score >= config.seed_score_threshold)
+    background_seed = cortical_margin | (
+        analysis_mask
+        & ~low_density_core
+        & (combined_score <= config.background_seed_score_threshold)
+    )
+    gradient_input = np.where(finite, hu, reference_median)
+    gradients = np.gradient(gradient_input, *spacing)
+    gradient_magnitude = np.sqrt(sum(component**2 for component in gradients))
+    gradient_values = gradient_magnitude[analysis_mask]
+    gradient_scale = (
+        float(np.percentile(gradient_values, 95.0))
+        if gradient_values.size
+        else 1.0
+    )
+    gradient_score = np.clip(
+        gradient_magnitude / max(gradient_scale, 1e-6),
+        0.0,
+        1.0,
+    )
+    region_grown = seeded_region_grow(
+        foreground_seed=seed,
+        background_seed=background_seed,
+        allowed_mask=candidate_envelope,
+        combined_score=combined_score,
+        gradient_score=gradient_score,
+        minimum_score=config.region_grow_minimum_score,
+        maximum_gradient=config.region_grow_maximum_gradient,
+        connectivity=config.region_grow_connectivity,
+    )
+    candidate = region_grown
 
     retained, removed = _component_filter(
         candidate,
@@ -424,6 +534,21 @@ def segment_onfh_roi(
         spacing_zyx=spacing,
         reference_voxel_count=int(reference_values.size),
         config=config,
+        physical_coordinate_mode=physical_coordinate_mode,
+        sphere_fit_rms_fraction=(
+            float(sphere_fit.rms_residual_mm) / max(float(sphere_fit.radius_mm), 1e-6)
+        ),
+    )
+    angles = compute_kerboul_like_3d_angles(final_roi, geometry)
+    involvement = compute_zone_involvement(
+        final_roi,
+        subchondral_band,
+        weight_bearing_zone,
+    )
+    experimental_score = compute_experimental_collapse_feature_score(
+        involvement["subchondral_involvement_percent"],
+        involvement["weight_bearing_involvement_percent"],
+        angles["combined_angle_deg"],
     )
     metrics = {
         **volumes,
@@ -432,6 +557,21 @@ def segment_onfh_roi(
         "reference_voxel_count": int(reference_values.size),
         "candidate_voxel_count": int(candidate.sum()),
         "seed_voxel_count": int(seed.sum()),
+        "region_grown_voxel_count": int(region_grown.sum()),
+        "physical_coordinate_mode": physical_coordinate_mode,
+        "sphere_center_right_mm": float(sphere_fit.center_ras_mm[0]),
+        "sphere_center_anterior_mm": float(sphere_fit.center_ras_mm[1]),
+        "sphere_center_superior_mm": float(sphere_fit.center_ras_mm[2]),
+        "sphere_radius_mm": float(sphere_fit.radius_mm),
+        "sphere_fit_rms_mm": float(sphere_fit.rms_residual_mm),
+        "sphere_fit_rms_fraction": (
+            float(sphere_fit.rms_residual_mm) / max(float(sphere_fit.radius_mm), 1e-6)
+        ),
+        "kerboul_like_coronal_angle_deg": angles["coronal_span_deg"],
+        "kerboul_like_sagittal_angle_deg": angles["sagittal_span_deg"],
+        "kerboul_like_combined_angle_deg": angles["combined_angle_deg"],
+        **involvement,
+        "experimental_collapse_feature_score": experimental_score,
     }
     masks = {
         "FEMORAL_HEAD": head,
@@ -439,6 +579,10 @@ def segment_onfh_roi(
         "SCLEROTIC_RIM": sclerotic_rim,
         "SUBCHONDRAL_BAND": subchondral_band,
         "WEIGHT_BEARING_ZONE": weight_bearing_zone,
+        "ANTEROSUPERIOR_ZONE": anterosuperior_zone,
+        "FOREGROUND_SEED": seed,
+        "BACKGROUND_SEED": background_seed & head,
+        "REGION_GROWN_ROI": region_grown,
         "NECROSIS_ROI_FINAL": final_roi,
         "QC_WARNING_REGION": warning_region,
     }
@@ -448,7 +592,7 @@ def segment_onfh_roi(
         "reference_median_hu": reference_median,
         "reference_low_percentile_hu": percentile_low,
         "reference_high_percentile_hu": percentile_high,
-        "score_threshold": float(config.score_threshold),
+        "region_grow_minimum_score": float(config.region_grow_minimum_score),
     }
     return SegmentationResult(
         masks=masks,
@@ -487,6 +631,14 @@ def make_json_safe_report(
         "method": {
             "mode": "expert-reviewed initialization",
             "diagnostic_use": False,
+            "research_feature_status": {
+                "validated_predictor": False,
+                "clinical_probability": False,
+                "description": (
+                    "Angular, anatomical-involvement, and composite features are "
+                    "uncalibrated research measurements requiring outcome validation."
+                ),
+            },
             "configuration": asdict(result.config),
         },
         "adaptive_thresholds_hu": result.thresholds,
@@ -517,6 +669,27 @@ def make_csv_summary_row(
         "sclerotic_rim_mm3": float(result.metrics["sclerotic_rim_mm3"]),
         "final_roi_mm3": float(result.metrics["final_roi_mm3"]),
         "roi_to_head_percent": float(result.metrics["roi_to_head_percent"]),
+        "sphere_radius_mm": float(result.metrics["sphere_radius_mm"]),
+        "sphere_fit_rms_mm": float(result.metrics["sphere_fit_rms_mm"]),
+        "physical_coordinate_mode": str(result.metrics["physical_coordinate_mode"]),
+        "kerboul_like_coronal_angle_deg": float(
+            result.metrics["kerboul_like_coronal_angle_deg"]
+        ),
+        "kerboul_like_sagittal_angle_deg": float(
+            result.metrics["kerboul_like_sagittal_angle_deg"]
+        ),
+        "kerboul_like_combined_angle_deg": float(
+            result.metrics["kerboul_like_combined_angle_deg"]
+        ),
+        "subchondral_involvement_percent": float(
+            result.metrics["subchondral_involvement_percent"]
+        ),
+        "weight_bearing_involvement_percent": float(
+            result.metrics["weight_bearing_involvement_percent"]
+        ),
+        "experimental_collapse_feature_score": float(
+            result.metrics["experimental_collapse_feature_score"]
+        ),
         "retained_component_count": int(result.metrics["retained_component_count"]),
         "reference_voxel_count": int(result.metrics["reference_voxel_count"]),
         "qc_status": str(result.qc["status"]),
