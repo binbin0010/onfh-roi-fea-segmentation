@@ -7,6 +7,10 @@ message: "If you use this software, please cite the archived software DOI and as
 authors:
   - family-names: Zheng
     given-names: Shanbin
+  - family-names: Liu
+    given-names: Xin
+  - family-names: Shen
+    given-names: Jirong
   - family-names: Xia
     given-names: Tianwei
 keywords:

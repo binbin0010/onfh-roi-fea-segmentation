@@ -202,6 +202,8 @@ APIs.
 
 ```text
 scripts/
+  figures/
+    generate_surgical_schematic.js
   slicer/
     femoral_necrosis_pipeline_v2.py
     femoral_necrosis_pipeline_v3.py
@@ -211,6 +213,10 @@ scripts/
 tests/
   test_onfh_v3_core.py
 docs/
+  figures/
+    workflow_figure_v3_1.*
+    surgical_workflows_jar_style.*
+    figure_captions.md
   algorithm_v3.md
   validation_protocol.md
   SOP.md
@@ -226,6 +232,15 @@ assigned from CT HU values unless a different model is explicitly reported.
 STL generation does not validate surface repair, mesh convergence, contact
 assumptions, or loading conditions. See
 [docs/fea_preprocessing.md](docs/fea_preprocessing.md).
+
+## Manuscript Figures
+
+Journal-ready editable and export-ready figure files are provided in
+[docs/figures](docs/figures):
+
+- V3.1 anatomy-adaptive ONFH ROI workflow;
+- comparative schematic of PVIBGT and SHD-IBG surgical workflows;
+- concise figure captions for manuscript or supplementary use.
 
 ## Privacy
 
@@ -243,3 +258,7 @@ archived release or DOI after validation and versioning.
 
 See [CITATION.cff](CITATION.cff) and
 [docs/code_availability_statement.md](docs/code_availability_statement.md).
+
+## Contributors
+
+Shanbin Zheng, Xin Liu, Jirong Shen, and Tianwei Xia.
