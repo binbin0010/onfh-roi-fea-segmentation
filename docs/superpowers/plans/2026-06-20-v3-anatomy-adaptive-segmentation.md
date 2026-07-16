@@ -182,8 +182,8 @@ no whitespace errors.
 - [ ] **Step 2: Review scope and claims**
 
 Confirm that no documentation calls v3 diagnostically validated or fully
-automatic. Confirm that v1.0.0 remains identified as the manuscript-associated
-release.
+automatic. Confirm that v1.0.0 remains identified as the historical baseline
+and that v3.0.0 is the manuscript-associated release.
 
 - [ ] **Step 3: Commit and push**
 
@@ -192,4 +192,3 @@ git add .github README.md CHANGELOG.md docs examples scripts tests
 git commit -m "Add anatomy-adaptive ONFH segmentation v3"
 git push -u origin codex/v3-anatomy-adaptive-segmentation
 ```
-

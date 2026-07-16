@@ -27,6 +27,6 @@ jobs:
         run: |
           python -m py_compile \
             scripts/slicer/onfh_v3_core.py \
+            scripts/slicer/onfh_v3_features.py \
             scripts/slicer/femoral_necrosis_pipeline_v2.py \
             scripts/slicer/femoral_necrosis_pipeline_v3.py
-

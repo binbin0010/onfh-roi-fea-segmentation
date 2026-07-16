@@ -1,9 +1,9 @@
 {
-  "title": "Segmentation-assisted ROI definition and finite element preprocessing workflow for osteonecrosis of the femoral head",
+  "title": "Anatomy-adaptive ROI definition and finite element preprocessing workflow for osteonecrosis of the femoral head",
   "upload_type": "software",
   "access_right": "open",
   "license": "mit",
-  "version": "1.0.0",
+  "version": "3.0.0",
   "language": "eng",
   "creators": [
     {

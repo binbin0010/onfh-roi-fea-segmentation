@@ -29,12 +29,14 @@ This repository provides:
 
 | Workflow | Purpose | Intensity model | Status |
 |---|---|---|---|
-| `femoral_necrosis_pipeline_v2.py` | Fixed-threshold manuscript baseline | 10-300 HU core, 600-1800 HU rim | Associated with release `v1.0.0`; expert review required |
-| `femoral_necrosis_pipeline_v3.py` | Anatomy-adaptive research workflow | Patient-specific percentiles with absolute HU safety bounds | Development workflow; synthetic tests passed; clinical contour validation pending |
-| `femoral_necrosis_pipeline.m` | Mimics MATLAB Link fallback | Fixed Mimics gray-value thresholds | Expert review required |
+| `femoral_necrosis_pipeline_v2.py` | Historical fixed-threshold baseline | 10-300 HU core, 600-1800 HU rim | Archived as `v1.0.0`; not used in the current manuscript |
+| `femoral_necrosis_pipeline_v3.py` | Manuscript-associated anatomy-adaptive workflow | Patient-specific percentiles with absolute HU safety bounds | Archived as `v3.0.0`; synthetic tests passed; expert review required |
+| `femoral_necrosis_pipeline.m` | Historical Mimics MATLAB Link fallback | Fixed Mimics gray-value thresholds | Retained for traceability; expert review required |
 
-V2 is retained for traceability. V3 is not presented as a drop-in replacement
-for the manuscript-associated release until clinical validation is completed.
+Release `v3.0.0` defines the computational workflow used in the current
+manuscript. V2 and the MATLAB Link fallback are retained for historical
+traceability. Public release of V3 supports computational reproducibility but
+does not replace expert mask review or establish independent clinical validity.
 
 ## V3 Method
 
@@ -72,7 +74,7 @@ The weights are prespecified research parameters, not validated diagnostic
 coefficients. See [docs/algorithm_v3.md](docs/algorithm_v3.md) and
 [docs/parameter_table.md](docs/parameter_table.md).
 
-![ONFH V3.1 anatomy-adaptive workflow](docs/workflow_figure.png)
+![ONFH V3 anatomy-adaptive workflow](docs/workflow_figure.png)
 
 ## Explainable Outputs
 
@@ -191,6 +193,7 @@ With a Python environment containing NumPy and SciPy:
 python -m unittest discover -s tests -v
 python -m py_compile \
   scripts/slicer/onfh_v3_core.py \
+  scripts/slicer/onfh_v3_features.py \
   scripts/slicer/femoral_necrosis_pipeline_v2.py \
   scripts/slicer/femoral_necrosis_pipeline_v3.py
 ```
@@ -208,10 +211,12 @@ scripts/
     femoral_necrosis_pipeline_v2.py
     femoral_necrosis_pipeline_v3.py
     onfh_v3_core.py
+    onfh_v3_features.py
   mimics_matlab_link/
     femoral_necrosis_pipeline.m
 tests/
   test_onfh_v3_core.py
+  test_onfh_v3_features.py
 docs/
   figures/
     workflow_figure_v3_1.*
@@ -238,7 +243,7 @@ assumptions, or loading conditions. See
 Journal-ready editable and export-ready figure files are provided in
 [docs/figures](docs/figures):
 
-- V3.1 anatomy-adaptive ONFH ROI workflow;
+- V3 anatomy-adaptive ONFH ROI workflow;
 - comparative schematic of PVIBGT and SHD-IBG surgical workflows;
 - concise figure captions for manuscript or supplementary use.
 
@@ -252,9 +257,12 @@ review.
 
 ## Citation and Release Boundary
 
-Release `v1.0.0` is the manuscript-associated fixed-threshold workflow. The v3
-branch is a method-development update and should be cited with its eventual
-archived release or DOI after validation and versioning.
+Release [`v3.0.0`](https://github.com/binbin0010/onfh-roi-fea-segmentation/releases/tag/v3.0.0)
+is the manuscript-associated anatomy-adaptive workflow. Release `v1.0.0` is
+retained as the historical fixed-threshold baseline and was not used for the
+analyses reported in the current manuscript. Later repository changes are not
+part of the manuscript-associated analysis unless identified by a new release
+or an explicit commit hash.
 
 See [CITATION.cff](CITATION.cff) and
 [docs/code_availability_statement.md](docs/code_availability_statement.md).

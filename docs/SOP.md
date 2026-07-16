@@ -144,6 +144,9 @@ Correction time is a recommended validation outcome.
 
 V2 must be used when reproducing release `v1.0.0`.
 
+The anatomy-adaptive workflow used in the current manuscript is frozen as
+release `v3.0.0` and must be run through Route A with mandatory expert review.
+
 ## Route C: Mimics MATLAB Link Fallback
 
 1. Load the CT case in Mimics.

@@ -8,9 +8,10 @@ femoral-head anatomy, adaptive CT intensity features, subchondral and superior
 weight-bearing priors, sclerotic-rim proximity, explicit quality control (QC),
 and reproducible ROI-to-FEA exports.
 
-The v2 script remains unchanged as the manuscript-associated fixed-threshold
-baseline. V3 is a new method and must not be described as clinically validated
-until independent expert reference contours are available.
+The v2 script remains unchanged as the historical fixed-threshold baseline.
+Beginning with release `v3.0.0`, V3 is the manuscript-associated workflow but
+must not be described as clinically validated until independent expert
+reference contours are available.
 
 ## Research Claim Boundary
 
@@ -156,4 +157,3 @@ two independent expert contours and adjudicated consensus. Recommended metrics
 are Dice similarity, Jaccard index, 95% Hausdorff distance, average surface
 distance, volume error, correction time, failure rate, and propagation of ROI
 uncertainty into FEA outputs.
-

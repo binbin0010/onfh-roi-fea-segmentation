@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## v3.0.0 - 2026-07-16
 
+- Frozen the anatomy-adaptive V3 workflow as the manuscript-associated release.
 - Added physical-RAS femoral-head sphere fitting, radial-depth maps, and
   anterosuperior weight-bearing priors.
 - Added deterministic gradient-aware seeded region growing with explicit
@@ -21,8 +22,8 @@
 - Added named v3 STL export and machine-readable JSON/CSV provenance reports.
 - Added a clinical validation protocol, v3 algorithm description, expanded SOP,
   and GitHub Actions checks.
-- Preserved v2 and release `v1.0.0` as the manuscript-associated fixed-threshold
-  baseline.
+- Preserved v2 and release `v1.0.0` as the historical fixed-threshold baseline;
+  these files were not used for the analyses reported in the current manuscript.
 - Fixed TotalSegmentator 2.x invocation by using `task="total"` with
   `quality="fast"` instead of the invalid `task="total_fast"`.
 - Added robust femur segment-name matching for both raw labels
@@ -36,7 +37,7 @@
 
 ## v1.0.0
 
-- Initial manuscript-associated release.
+- Initial fixed-threshold baseline release.
 - Added 3D Slicer + TotalSegmentator segmentation workflow.
 - Added Mimics 21 Research MATLAB Link fallback workflow.
 - Added SOP, parameter table, and FEA preprocessing notes.

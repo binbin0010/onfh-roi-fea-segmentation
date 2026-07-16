@@ -1,36 +1,36 @@
-# Code Availability Statements
+# Code Availability Statement
 
-## Manuscript-Associated V2 Statement
-
-```text
-Code availability
-The scripts used for segmentation-assisted ROI initialization, mask refinement,
-volume calculation, STL export, and finite-element preprocessing are available
-at https://github.com/binbin0010/onfh-roi-fea-segmentation. Release v1.0.0
-corresponds to the fixed-threshold workflow associated with this study.
-Patient-level DICOM data and derived identifiable models are not publicly
-available because of privacy and ethical restrictions.
-```
-
-## V3 Method-Development Statement
-
-Use this statement only after the v3 branch is assigned an archived release or
-DOI:
+## Manuscript-Associated V3 Statement
 
 ```text
 Code availability
-The anatomy-adaptive, expert-reviewed ONFH ROI initialization workflow is
-available at [repository URL] and archived as [release/DOI]. The repository
-contains the Slicer-independent NumPy/SciPy core, 3D Slicer integration,
-synthetic unit tests, parameter definitions, structured QC, and reproducible
-STL/JSON/CSV export. The software is intended for research use and requires
-expert mask review. Clinical spatial validation against multi-expert consensus
-contours is described separately and should not be inferred from software unit
-tests. Patient-level DICOM data and derived models are not publicly shared.
+The Version 3 (V3) anatomy-adaptive, segmentation-assisted workflow used for
+ROI delineation and finite element analysis preprocessing in this study is
+publicly available under the MIT License at
+https://github.com/binbin0010/onfh-roi-fea-segmentation and archived as release
+v3.0.0 at
+https://github.com/binbin0010/onfh-roi-fea-segmentation/releases/tag/v3.0.0.
+The repository contains the Slicer-independent NumPy/SciPy core, 3D Slicer
+integration, synthetic unit tests, software environment, parameter table,
+standard operating procedure, validation protocol, structured quality control,
+FEA preprocessing documentation, and reproducible STL/JSON/CSV export. All
+generated masks require expert review and correction when necessary before
+measurement or FEA. Release v1.0.0 is retained only as the historical
+fixed-threshold baseline and was not used for the analyses reported in the
+current manuscript. Patient-level DICOM data, identifiable images,
+patient-derived models, and institution-specific file paths are not publicly
+shared. De-identified imaging data may be made available by the corresponding
+author upon reasonable request, subject to institutional approval and
+applicable privacy regulations.
 ```
 
 ## Release Boundary
 
-- `v1.0.0`: manuscript-associated v2 fixed-threshold workflow.
-- v3 development branch: adaptive anatomy-constrained workflow; not yet an
-  archived clinical-validation release.
+- `v3.0.0`: manuscript-associated anatomy-adaptive V3 workflow.
+- `v1.0.0`: historical fixed-threshold V2 baseline; not used in the current
+  manuscript.
+
+The V3 release supports computational reproducibility but does not by itself
+constitute independent clinical validation. The software is intended for
+research use with mandatory expert review and is not an autonomous diagnostic,
+staging, prognostic, or treatment-decision system.

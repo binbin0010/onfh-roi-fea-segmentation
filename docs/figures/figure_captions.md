@@ -2,7 +2,7 @@
 
 ## Figure X. Anatomy-adaptive ONFH ROI workflow
 
-Workflow of the V3.1 research segmentation module for expert-reviewed
+Workflow of the V3 research segmentation module for expert-reviewed
 osteonecrosis of the femoral head (ONFH) ROI definition and downstream finite
 element analysis (FEA) preprocessing. The workflow integrates femoral-head
 sphere fitting, subchondral distance mapping, anterosuperior weight-bearing

@@ -33,7 +33,7 @@ import slicer
 import vtk
 
 
-SOFTWARE_VERSION = "3.1.0-dev"
+SOFTWARE_VERSION = "3.0.0"
 
 
 # =========================
